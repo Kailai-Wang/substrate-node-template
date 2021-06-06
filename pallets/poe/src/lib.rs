@@ -23,10 +23,12 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	#[pallet::metadata(T::AccountId = "AccountId")]
 	pub enum Event<T: Config> {
-	/// Event emitted when a proof has been claimed. [who, claim]
-        ClaimCreated(T::AccountId, Vec<u8>),
-        /// Event emitted when a claim is revoked by the owner. [who, claim]
-        ClaimRevoked(T::AccountId, Vec<u8>),
+		/// Event emitted when a proof has been claimed. [who, claim]
+		ClaimCreated(T::AccountId, Vec<u8>),
+		/// Event emitted when a claim is revoked by the owner. [who, claim]
+		ClaimRevoked(T::AccountId, Vec<u8>),
+		/// Event emitted when a claim is transferred from one owner to the other. [sender, receiver, claim]
+		ClaimTransferred(T::AccountId, T::AccountId, Vec<u8>),
     }
     
     #[pallet::error]
@@ -37,6 +39,8 @@ pub mod pallet {
 		NoSuchProof,
 		/// The proof is claimed by another account, so caller can't revoke it.
 		NotProofOwner,
+		/// The claim receiver account doesn't exist
+		ProofReceiverNotExist,
 	}
     
     #[pallet::pallet]
@@ -104,6 +108,43 @@ pub mod pallet {
 
 			// Emit an event that the claim was erased.
 			Self::deposit_event(Event::ClaimRevoked(sender, proof));
+
+			Ok(().into())
+		}
+
+		#[pallet::weight(10_000)]
+		pub(super) fn transfer_claim(
+			origin: OriginFor<T>,
+			proof: Vec<u8>,
+			receiver: T::AccountId
+		) -> DispatchResultWithPostInfo {
+			// Check that the extrinsic was signed and get the signer.
+			// This function will return an error if the extrinsic is not signed.
+			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
+			let sender = ensure_signed(origin)?;
+
+			// Verify that the specified proof has been claimed.
+			ensure!(Proofs::<T>::contains_key(&proof), Error::<T>::NoSuchProof);
+
+			// Get owner of the claim.
+			let (owner, _) = Proofs::<T>::get(&proof);
+
+			// Verify that sender of the current call is the claim owner.
+			ensure!(sender == owner, Error::<T>::NotProofOwner);
+
+			// Verify that the claim receiver accout exists
+			// It's allowed to transfer to "oneself", i.e. we do not enforce receiver != sender.
+			// In this case, only block number will be updated
+			ensure!(frame_system::Pallet::<T>::account_exists(&receiver), Error::<T>::ProofReceiverNotExist);
+
+			// Get the block number from the FRAME System module.
+			let current_block = <frame_system::Module<T>>::block_number();
+
+			// Update the proof with the new owner (receiver) and block number.
+			Proofs::<T>::insert(&proof, (&receiver, current_block));
+
+			// Emit an event that the claim was transferred.
+			Self::deposit_event(Event::ClaimTransferred(sender, receiver, proof));
 
 			Ok(().into())
 		}
