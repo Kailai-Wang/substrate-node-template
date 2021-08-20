@@ -3,6 +3,11 @@
 // Re-export pallet items so that they can be accessed from the crate namespace.
 pub use pallet::*;
 
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod tests;
+
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::{dispatch::DispatchResultWithPostInfo, pallet_prelude::*};
@@ -48,8 +53,9 @@ pub mod pallet {
 	pub struct Pallet<T>(_);
 
 	#[pallet::storage]
-	pub(super) type Proofs<T: Config> =
-		StorageMap<_, Blake2_128Concat, Vec<u8>, (T::AccountId, T::BlockNumber), ValueQuery>;
+	#[pallet::getter(fn proofs)]
+	pub type Proofs<T: Config> =
+		StorageMap<_, Blake2_128Concat, Vec<u8>, (T::AccountId, T::BlockNumber)>;
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
@@ -76,7 +82,7 @@ pub mod pallet {
 			let current_block = <frame_system::Pallet<T>>::block_number();
 
 			// Store the proof with the sender and block number.
-			Proofs::<T>::insert(&proof, (&sender, current_block));
+			Proofs::<T>::insert(&proof, (sender.clone(), current_block));
 
 			// Emit an event that the claim was created.
 			Self::deposit_event(Event::ClaimCreated(sender, proof));
@@ -91,11 +97,8 @@ pub mod pallet {
 			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
 			let sender = ensure_signed(origin)?;
 
-			// Verify that the specified proof has been claimed.
-			ensure!(Proofs::<T>::contains_key(&proof), Error::<T>::NoSuchProof);
-
-			// Get owner of the claim.
-			let (owner, _) = Proofs::<T>::get(&proof);
+			// Get owner of the claim, emits error if no such proof
+			let (owner, _) = Proofs::<T>::get(&proof).ok_or(Error::<T>::NoSuchProof)?;
 
 			// Verify that sender of the current call is the claim owner.
 			ensure!(sender == owner, Error::<T>::NotProofOwner);
@@ -120,11 +123,8 @@ pub mod pallet {
 			// https://substrate.dev/docs/en/knowledgebase/runtime/origin
 			let sender = ensure_signed(origin)?;
 
-			// Verify that the specified proof has been claimed.
-			ensure!(Proofs::<T>::contains_key(&proof), Error::<T>::NoSuchProof);
-
-			// Get owner of the claim.
-			let (owner, _) = Proofs::<T>::get(&proof);
+			// Get owner of the claim, emits error if no such proof
+			let (owner, _) = Proofs::<T>::get(&proof).ok_or(Error::<T>::NoSuchProof)?;
 
 			// Verify that sender of the current call is the claim owner.
 			ensure!(sender == owner, Error::<T>::NotProofOwner);
