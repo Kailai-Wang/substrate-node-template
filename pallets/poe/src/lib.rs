@@ -19,6 +19,10 @@ pub mod pallet {
 	pub trait Config: frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+		/// the maximum length of proof, exceeding it would result in an error
+		#[pallet::constant]
+		type MaxProofLength: Get<u64>;
 	}
 
 	// Pallets use events to inform users when important changes are made.
@@ -46,6 +50,8 @@ pub mod pallet {
 		NotProofOwner,
 		/// The claim receiver account doesn't exist
 		ProofReceiverNotExist,
+		/// the claim exceeds its pre-defined max length
+		ProofLengthTooLong,
 	}
 
 	#[pallet::pallet]
@@ -74,6 +80,12 @@ pub mod pallet {
 
 			// Verify that the specified proof has not already been claimed.
 			ensure!(!Proofs::<T>::contains_key(&proof), Error::<T>::ProofAlreadyClaimed);
+
+			// Verify that the specified proof doesn't exceed the max length
+			ensure!(
+				proof.len() <= T::MaxProofLength::get() as usize,
+				Error::<T>::ProofLengthTooLong
+			);
 
 			// Get the block number from the FRAME System module.
 			let current_block = <frame_system::Pallet<T>>::block_number();

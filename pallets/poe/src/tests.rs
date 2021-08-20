@@ -169,3 +169,37 @@ fn transfer_claim_fails_when_owner_does_not_match() {
 		);
 	});
 }
+
+#[test]
+fn create_claim_works_without_exceeding_max_length() {
+	new_test_ext().execute_with(|| {
+		// create a proof with length: MaxProofLength / 2
+		let length = MaxProofLength::get() as usize / 2;
+		let proof = vec![1u8; length];
+		let owner = 1;
+		assert_ok!(PoeModule::create_claim(Origin::signed(owner), proof.clone()));
+
+		// double check the proof exists and is retrievable
+		assert_eq!(
+			Proofs::<Test>::get(&proof),
+			Some((1, frame_system::Pallet::<Test>::block_number()))
+		);
+	});
+}
+
+#[test]
+fn create_claim_fails_with_exceeding_max_length() {
+	new_test_ext().execute_with(|| {
+		// create a proof with length: MaxProofLength + 1
+		let length = MaxProofLength::get() as usize + 1;
+		let proof = vec![1u8; length];
+		let owner = 1;
+		assert_noop!(
+			PoeModule::create_claim(Origin::signed(owner), proof.clone()),
+			Error::<Test>::ProofLengthTooLong
+		);
+
+		// double check that proof doesn't exist
+		assert_eq!(Proofs::<Test>::get(&proof), None);
+	});
+}
